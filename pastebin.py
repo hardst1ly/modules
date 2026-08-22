@@ -5,43 +5,53 @@ from .. import loader, utils
 
 @loader.tds
 class PastebinMod(loader.Module):
-    """Менеджер Pastebin: загрузка, список и удаление паст"""
+    """Менеджер Pastebin: загрузка (add), список (list) и удаление (delete) паст"""
 
     strings = {
         "name": "Pastebin",
-        "no_creds": "❌ Сначала настрой доступ: .pb config <dev_key> <логин> <пароль>",
+        "no_creds": "❌ Настрой доступ через .config Pastebin (dev_key, username, password)",
+        "no_reply": "❌ Ответь на сообщение или файл, который хочешь залить",
         "created": "✅ Паста создана: {}",
         "deleted": "✅ Паста успешно удалена",
         "error": "❌ Ошибка API: {}",
         "list_empty": "📭 Список паст пуст",
         "list_header": "📋 Твои последние пасты:\n",
-        "saved": "✅ Настройки Pastebin сохранены. Сессионный ключ получен.",
         "help": (
-            "📋 <b>Pastebin Manager</b>\n"
-            "Использование: <code>.pb &lt;действие&gt; [аргументы]</code>\n"
-            "(также работает алиас <code>.pastebin</code>)\n\n"
-            "🔹 <code>.pb help</code> — Показать это сообщение\n"
-            "🔹 <code>.pb config &lt;key&gt; &lt;логин&gt; &lt;пароль&gt;</code> — Настроить доступ\n"
-            "🔹 <code>.pb upload &lt;заголовок&gt; [текст]</code> — Создать пасту\n"
-            "   (или ответь командой на сообщение/файл)\n"
-            "🔹 <code>.pb list</code> — Показать последние 10 паст\n"
-            "🔹 <code>.pb delete &lt;ключ&gt;</code> — Удалить пасту по ключу"
+            "<b>📋 Pastebin Manager</b>\n\n"
+            "🔹 <code>.pb add [заголовок]</code> — ответь на сообщение или файл\n"
+            "🔹 <code>.pb list</code> — показать последние 10 паст\n"
+            "🔹 <code>.pb delete &lt;ключ&gt;</code> — удалить пасту по ключу\n\n"
+            "⚙️ Настройка API: <code>.config Pastebin</code>"
         )
     }
 
     def __init__(self):
         self.config = loader.ModuleConfig(
-            loader.ConfigValue("dev_key", "", "Pastebin API Developer Key", validator=loader.validators.String()),
-            loader.ConfigValue("username", "", "Pastebin Username", validator=loader.validators.String()),
-            loader.ConfigValue("password", "", "Pastebin Password", validator=loader.validators.String()),
+            loader.ConfigValue(
+                "dev_key", "",
+                lambda: "Pastebin API Developer Key (брать в настройках аккаунта Pastebin)",
+                validator=loader.validators.String(),
+            ),
+            loader.ConfigValue(
+                "username", "",
+                lambda: "Логин от Pastebin",
+                validator=loader.validators.String(),
+            ),
+            loader.ConfigValue(
+                "password", "",
+                lambda: "Пароль от Pastebin (для генерации сессионного ключа)",
+                validator=loader.validators.Hidden(loader.validators.String()),
+            ),
         )
         self._user_key = None
         self.login_url = "https://pastebin.com/api/api_login.php"
         self.post_url = "https://pastebin.com/api/api_post.php"
 
     async def _get_user_key(self):
+        """Автоматически получает и кэширует сессионный ключ из логина/пароля"""
         if self._user_key:
             return self._user_key
+        
         if not self.config["dev_key"] or not self.config["username"] or not self.config["password"]:
             return None
 
@@ -61,9 +71,11 @@ class PastebinMod(loader.Module):
         except Exception:
             return None
 
-    @loader.command(alias=["pastebin"])
+    @loader.command()
     async def pb(self, message: Message):
+        """- управление pastebin"""
         args = utils.get_args_raw(message).split()
+        
         if not args:
             await utils.answer(message, self.strings["help"])
             return
@@ -72,17 +84,8 @@ class PastebinMod(loader.Module):
         
         if action in ["help", "h"]:
             await utils.answer(message, self.strings["help"])
-        elif action in ["config", "c", "set"]:
-            if len(args) < 4:
-                await utils.answer(message, "❌ Использование: .pb config <dev_key> <логин> <пароль>")
-                return
-            self.config["dev_key"] = args[1]
-            self.config["username"] = args[2]
-            self.config["password"] = args[3]
-            self._user_key = None
-            await utils.answer(message, self.strings["saved"])
-        elif action in ["upload", "u", "up"]:
-            await self._upload(message, args[1:])
+        elif action in ["add", "a", "up", "upload"]:
+            await self._add(message, args[1:])
         elif action in ["list", "l"]:
             await self._list(message)
         elif action in ["delete", "del", "d"]:
@@ -90,37 +93,46 @@ class PastebinMod(loader.Module):
         else:
             await utils.answer(message, f"❌ Неизвестное действие: {action}\n\n" + self.strings["help"])
 
-    async def _upload(self, message: Message, args):
+    async def _add(self, message: Message, args):
+        """Загрузка сообщения/файла на pastebin"""
         user_key = await self._get_user_key()
         if not user_key:
             await utils.answer(message, self.strings["no_creds"])
             return
 
-        title = "Untitled"
+        if not message.is_reply:
+            await utils.answer(message, self.strings["no_reply"])
+            return
+
+        reply = await message.get_reply_message()
+        title = args[0] if args else "Paste"
         text = ""
         
-        if message.is_reply:
-            reply = await message.get_reply_message()
-            text = reply.text or reply.raw_text or ""
-            title = args[0] if args else (reply.file.name if reply.file else "Replied Paste")
-            
-            # Если ответили на файл (документ), читаем его содержимое
-            if reply.document and not text:
-                await utils.answer(message, "⏳ Читаю файл...")
-                file_bytes = await reply.download_media(bytes)
-                if len(file_bytes) > 512000:
-                    await utils.answer(message, "❌ Файл слишком большой для Pastebin (макс. 512 КБ)")
-                    return
-                text = file_bytes.decode('utf-8', errors='ignore')
-        else:
+        # Читаем текст из сообщения
+        if reply.text or reply.raw_text:
+            text = reply.text or reply.raw_text
             if not args:
-                await utils.answer(message, "❌ Использование: .pb upload <заголовок> <текст>\nИли ответь на сообщение/файл: .pb upload <заголовок>")
+                title = reply.file.name if reply.file else "Paste"
+                
+        # Если это документ (файл), читаем его содержимое
+        elif reply.document:
+            if not args and reply.file and reply.file.name:
+                title = reply.file.name
+                
+            await utils.answer(message, "⏳ Читаю файл...")
+            file_bytes = await reply.download_media(bytes)
+            
+            if len(file_bytes) > 512000:
+                await utils.answer(message, "❌ Файл слишком большой для Pastebin (макс. 512 КБ)")
                 return
-            title = args[0]
-            text = " ".join(args[1:])
-        
+            
+            text = file_bytes.decode('utf-8', errors='ignore')
+        else:
+            await utils.answer(message, "❌ В сообщении нет текста или файла для загрузки")
+            return
+
         if not text:
-            await utils.answer(message, "❌ Нет текста или содержимого файла для загрузки")
+            await utils.answer(message, "❌ Пустое содержимое")
             return
 
         data = {
@@ -129,11 +141,11 @@ class PastebinMod(loader.Module):
             'api_option': 'paste',
             'api_paste_code': text,
             'api_paste_name': title,
-            'api_paste_private': '1',
+            'api_paste_private': '1',  # 1 = unlisted (доступ по ссылке)
             'api_paste_format': 'text'
         }
         
-        await utils.answer(message, "⏳ Загрузка...")
+        await utils.answer(message, "⏳ Загрузка на Pastebin...")
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(self.post_url, data=data) as resp:
@@ -146,6 +158,7 @@ class PastebinMod(loader.Module):
             await utils.answer(message, self.strings["error"].format(str(e)))
 
     async def _list(self, message: Message):
+        """Показывает список твоих паст"""
         user_key = await self._get_user_key()
         if not user_key:
             await utils.answer(message, self.strings["no_creds"])
@@ -182,13 +195,14 @@ class PastebinMod(loader.Module):
             await utils.answer(message, self.strings["error"].format(str(e)))
 
     async def _delete(self, message: Message, args):
+        """Удаляет пасту по ключу"""
         user_key = await self._get_user_key()
         if not user_key:
             await utils.answer(message, self.strings["no_creds"])
             return
 
         if not args:
-            await utils.answer(message, "❌ Укажи ключ пасты для удаления: .pb delete <ключ>")
+            await utils.answer(message, "❌ Укажи ключ: <code>.pb delete &lt;ключ&gt;</code>")
             return
 
         key = args[0]
