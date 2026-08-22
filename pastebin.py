@@ -5,22 +5,22 @@ from .. import loader, utils
 
 @loader.tds
 class PastebinMod(loader.Module):
-    """Менеджер Pastebin: загрузка (add), список (list) и удаление (delete) паст"""
+    """Менеджер Pastebin: загрузка (add), список (list) и удаление (delete)"""
 
     strings = {
         "name": "Pastebin",
         "no_creds": "❌ Настрой доступ через .config Pastebin (dev_key, username, password)",
         "no_reply": "❌ Ответь на сообщение или файл, который хочешь залить",
-        "created": "✅ Паста создана: {}",
-        "deleted": "✅ Паста успешно удалена",
+        "created": "✅ Pastebin создан!\n\n🔗 Обычная: {}\n📄 Raw: {}",
+        "deleted": "✅ Pastebin успешно удалён",
         "error": "❌ Ошибка API: {}",
-        "list_empty": "📭 Список паст пуст",
-        "list_header": "📋 Твои последние пасты:\n",
+        "list_empty": "📭 Список Pastebin пуст",
+        "list_header": "📋 Твои последние Pastebin:\n",
         "help": (
             "<b>📋 Pastebin Manager</b>\n\n"
             "🔹 <code>.pb add [заголовок]</code> — ответь на сообщение или файл\n"
-            "🔹 <code>.pb list</code> — показать последние 10 паст\n"
-            "🔹 <code>.pb delete &lt;ключ&gt;</code> — удалить пасту по ключу\n\n"
+            "🔹 <code>.pb list</code> — показать последние 10 Pastebin\n"
+            "🔹 <code>.pb delete &lt;ключ&gt;</code> — удалить Pastebin по ключу\n\n"
             "⚙️ Настройка API: <code>.config Pastebin</code>"
         )
     }
@@ -153,12 +153,19 @@ class PastebinMod(loader.Module):
                     if res_text.startswith("Bad API request"):
                         await utils.answer(message, self.strings["error"].format(res_text))
                     else:
-                        await utils.answer(message, self.strings["created"].format(res_text))
+                        # Извлекаем ключ пасты из URL
+                        paste_key = res_text.split('/')[-1].strip()
+                        
+                        # Формируем обе ссылки
+                        normal_link = f"https://pastebin.com/{paste_key}"
+                        raw_link = f"https://pastebin.com/raw/{paste_key}"
+                        
+                        await utils.answer(message, self.strings["created"].format(normal_link, raw_link))
         except Exception as e:
             await utils.answer(message, self.strings["error"].format(str(e)))
 
     async def _list(self, message: Message):
-        """Показывает список твоих паст"""
+        """Показывает список твоих Pastebin"""
         user_key = await self._get_user_key()
         if not user_key:
             await utils.answer(message, self.strings["no_creds"])
@@ -195,7 +202,7 @@ class PastebinMod(loader.Module):
             await utils.answer(message, self.strings["error"].format(str(e)))
 
     async def _delete(self, message: Message, args):
-        """Удаляет пасту по ключу"""
+        """Удаляет Pastebin по ключу"""
         user_key = await self._get_user_key()
         if not user_key:
             await utils.answer(message, self.strings["no_creds"])
