@@ -9,7 +9,7 @@ class ShellExecMod(loader.Module):
     """Выполнение системных команд (только владелец)"""
     
     strings = {
-        "name": "ShellExec",
+        "name": "Shell",
         "no_cmd": "❌ Укажите команду. Пример: .exec ls -la",
         "executing": "⏳ Выполняю...",
         "done": "✅ Выполнено за {:.2f} сек",
