@@ -3,10 +3,10 @@ import subprocess
 import asyncio
 import shlex
 
-@loader.module(name="Terminal")
-class TerminalMod(loader.Module):
+@loader.module(name="MyTerminal")  # <-- уникальное имя, не системное
+class MyTerminalMod(loader.Module):
     strings = {
-        "name": "Terminal",
+        "name": "MyTerminal",
         "no_cmd": "❌ Укажите команду.",
         "done": "✅ Выполнено за {:.2f} сек",
         "error": "❌ Ошибка: {}",
