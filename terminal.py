@@ -4,11 +4,7 @@ import subprocess
 import asyncio
 import shlex
 
-@loader.module(
-    name="TerminalMod",
-    author="YourName",
-    version="1.0.0"
-)
+@loader.tds  # <-- заменили @loader.module на @loader.tds
 class TerminalMod(loader.Module):
     """Выполнение команд терминала (только для владельца)"""
     
@@ -22,8 +18,8 @@ class TerminalMod(loader.Module):
         "owner_only": "🚫 Эта команда доступна только владельцу бота."
     }
 
-    @loader.owner  # Только владелец может использовать
-    @loader.command
+    @loader.owner
+    @loader.command()  # <-- добавили круглые скобки
     async def t(self, message):
         """Выполнить команду в терминале. .t <команда>"""
         args = utils.get_args_raw(message)
@@ -31,21 +27,16 @@ class TerminalMod(loader.Module):
             await utils.answer(message, self.strings("no_cmd"))
             return
         
-        # Отправляем сообщение о начале выполнения
         status_msg = await utils.answer(message, self.strings("executing"))
         
-        # Запускаем команду с таймаутом (30 сек)
         try:
             start = asyncio.get_event_loop().time()
-            # Разбиваем команду на аргументы безопасно
             cmd_list = shlex.split(args)
-            # Выполняем в асинхронном режиме
             proc = await asyncio.create_subprocess_exec(
                 *cmd_list,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            # Ждём завершения с таймаутом 30 секунд
             try:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
             except asyncio.TimeoutError:
@@ -57,7 +48,6 @@ class TerminalMod(loader.Module):
             output = stdout.decode('utf-8', errors='replace').strip()
             error = stderr.decode('utf-8', errors='replace').strip()
             
-            # Формируем результат
             result = ""
             if output:
                 result += output
@@ -70,11 +60,9 @@ class TerminalMod(loader.Module):
             if not result:
                 result = "(пустой вывод)"
             
-            # Обрезаем, если слишком длинное (Telegram лимит 4096 символов)
             if len(result) > 3900:
                 result = result[:3900] + "\n... (обрезано)"
             
-            # Добавляем время выполнения
             result += f"\n\n⏱️ {self.strings('done').format(elapsed)}"
             
             await status_msg.edit_text(f"```bash\n{result}\n```", parse_mode="Markdown")
