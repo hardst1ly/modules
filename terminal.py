@@ -9,20 +9,21 @@ from .. import loader, utils
 
 @loader.tds
 class TerminalMod(loader.Module):
-    """Owner-only local terminal for Windows, Ubuntu WSL and Debian WSL."""
+    """Owner-only local terminal. Ubuntu WSL is the default target."""
 
     strings = {
         "name": "Terminal",
         "help": (
             "💻 <b>Terminal</b>\n\n"
-            "<code>.term win команда</code> — Windows CMD\n"
-            "<code>.term ubuntu команда</code> — Ubuntu WSL\n"
-            "<code>.term debian команда</code> — Debian WSL\n"
-            "<code>.term status</code> — состояние WSL\n\n"
+            "<code>.t команда</code> — Ubuntu WSL (по умолчанию)\n"
+            "<code>.t ubuntu команда</code> — Ubuntu WSL\n"
+            "<code>.t debian команда</code> — Debian WSL\n"
+            "<code>.t win команда</code> — Windows CMD\n"
+            "<code>.t status</code> — состояние WSL\n\n"
             "⏱ Таймаут: 120 секунд.\n"
             "📦 Вывод ограничен 12 000 символами."
         ),
-        "usage": "❌ Использование: <code>.term win|ubuntu|debian команда</code>",
+        "usage": "❌ Использование: <code>.t [ubuntu|debian|win] команда</code>",
         "running": "⏳ Выполняю...",
         "empty": "❌ Команда пустая.",
         "timeout": "⏱ Команда превысила таймаут <b>120 сек.</b>",
@@ -74,22 +75,22 @@ class TerminalMod(loader.Module):
 
     @loader.owner
     @loader.command()
-    async def term(self, message):
-        """win|ubuntu|debian|status — локальный терминал."""
+    async def t(self, message):
+        """[ubuntu|debian|win] команда — терминал; без цели запускает Ubuntu."""
         args = utils.get_args_raw(message).strip()
         if not args:
             await utils.answer(message, self.strings("help"))
             return
 
         parts = args.split(maxsplit=1)
-        target = parts[0].lower()
-        command = parts[1].strip() if len(parts) > 1 else ""
+        first = parts[0].lower()
+        explicit_target = first in {"ubuntu", "debian", "win", "windows", "status", "help", "h", "?"}
 
-        if target in {"help", "h", "?"}:
+        if first in {"help", "h", "?"}:
             await utils.answer(message, self.strings("help"))
             return
 
-        if target == "status":
+        if first == "status":
             msg = await utils.answer(message, self.strings("running"))
             code, output = await self._run_shell("wsl.exe -l -v")
             if output == "timeout":
@@ -101,21 +102,27 @@ class TerminalMod(loader.Module):
             await utils.answer(msg, self._format("WSL", "wsl.exe -l -v", code, output))
             return
 
+        if explicit_target:
+            target = first
+            command = parts[1].strip() if len(parts) > 1 else ""
+        else:
+            target = "ubuntu"
+            command = args
+
+        if not command:
+            await utils.answer(message, self.strings("empty"))
+            return
+
         if target in {"win", "windows"}:
-            if not command:
-                await utils.answer(message, self.strings("empty"))
-                return
             actual = "cmd.exe /d /s /c {}".format(shlex.quote(command))
             display = "Windows"
             msg = await utils.answer(message, self.strings("running"))
             code, output = await self._run_shell(actual)
         elif target in {"ubuntu", "debian"}:
-            if not command:
-                await utils.answer(message, self.strings("empty"))
-                return
-            display = target.capitalize() + " WSL"
+            distro = "Ubuntu" if target == "ubuntu" else "Debian"
+            display = distro + " WSL"
             msg = await utils.answer(message, self.strings("running"))
-            code, output = await self._run_wsl(target.capitalize(), command)
+            code, output = await self._run_wsl(distro, command)
         else:
             await utils.answer(message, self.strings("usage"))
             return
