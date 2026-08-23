@@ -1,4 +1,4 @@
-# shellexec.py — финальная версия без edit_text
+# shellexec.py — упрощённая версия без дублирования
 from .. import loader, utils
 import subprocess
 import asyncio
@@ -11,7 +11,6 @@ class ShellExecMod(loader.Module):
     strings = {
         "name": "ShellExec",
         "no_cmd": "❌ Укажите команду. Пример: .exec ls -la",
-        "executing": "⏳ Выполняю...",
         "done": "✅ Выполнено за {:.2f} сек",
         "error": "❌ Ошибка: {}",
         "timeout": "⏰ Команда выполнялась слишком долго и была прервана.",
@@ -25,8 +24,6 @@ class ShellExecMod(loader.Module):
             await utils.answer(message, self.strings("no_cmd"))
             return
         
-        status_msg = await utils.answer(message, self.strings("executing"))
-        
         try:
             start = asyncio.get_event_loop().time()
             cmd_list = shlex.split(args)
@@ -39,7 +36,6 @@ class ShellExecMod(loader.Module):
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
             except asyncio.TimeoutError:
                 proc.kill()
-                await status_msg.delete()
                 await utils.answer(message, self.strings("timeout"))
                 return
             
@@ -64,12 +60,9 @@ class ShellExecMod(loader.Module):
             
             result += f"\n\n⏱️ {self.strings('done').format(elapsed)}"
             
-            await status_msg.delete()
             await utils.answer(message, f"```bash\n{result}\n```", parse_mode="Markdown")
             
         except FileNotFoundError:
-            await status_msg.delete()
             await utils.answer(message, self.strings("error").format("Команда не найдена"))
         except Exception as e:
-            await status_msg.delete()
             await utils.answer(message, self.strings("error").format(str(e)))
