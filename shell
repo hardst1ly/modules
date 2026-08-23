@@ -26,6 +26,7 @@ class ShellExecMod(loader.Module):
             await utils.answer(message, self.strings("no_cmd"))
             return
         
+        # Отправляем сообщение о начале выполнения
         status_msg = await utils.answer(message, self.strings("executing"))
         
         try:
@@ -40,7 +41,8 @@ class ShellExecMod(loader.Module):
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
             except asyncio.TimeoutError:
                 proc.kill()
-                await status_msg.edit(self.strings("timeout"))  # edit вместо edit_text
+                await status_msg.delete()  # удаляем сообщение о выполнении
+                await utils.answer(message, self.strings("timeout"))
                 return
             
             elapsed = asyncio.get_event_loop().time() - start
@@ -64,9 +66,13 @@ class ShellExecMod(loader.Module):
             
             result += f"\n\n⏱️ {self.strings('done').format(elapsed)}"
             
-            await status_msg.edit(f"```bash\n{result}\n```", parse_mode="Markdown")
+            # Удаляем статусное сообщение и отправляем результат новым
+            await status_msg.delete()
+            await utils.answer(message, f"```bash\n{result}\n```", parse_mode="Markdown")
             
         except FileNotFoundError:
-            await status_msg.edit(self.strings("error").format("Команда не найдена"))
+            await status_msg.delete()
+            await utils.answer(message, self.strings("error").format("Команда не найдена"))
         except Exception as e:
-            await status_msg.edit(self.strings("error").format(str(e)))
+            await status_msg.delete()
+            await utils.answer(message, self.strings("error").format(str(e)))
