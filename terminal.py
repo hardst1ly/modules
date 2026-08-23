@@ -1,73 +1,129 @@
-# terminal.py – теперь называется MyTerminal
-from .. import loader, utils
-import subprocess
+# meta developer: @hardst1ly
+
 import asyncio
+import html
 import shlex
 
+from .. import loader, utils
+
+
 @loader.tds
-class MyTerminalMod(loader.Module):          # <-- имя класса изменено
-    """Выполнение команд терминала (только для владельца)"""
-    
+class TerminalMod(loader.Module):
+    """Owner-only local terminal for Windows, Ubuntu WSL and Debian WSL."""
+
     strings = {
-        "name": "terminaI",                # <-- новое имя модуля
-        "no_cmd": "❌ Укажите команду. Пример: .t ls -la",
-        "executing": "⏳ Выполняю...",
-        "done": "✅ Выполнено за {:.2f} сек",
-        "error": "❌ Ошибка: {}",
-        "timeout": "⏰ Команда выполнялась слишком долго и была прервана.",
-        "owner_only": "🚫 Эта команда доступна только владельцу бота."
+        "name": "Terminal",
+        "help": (
+            "💻 <b>Terminal</b>\n\n"
+            "<code>.term win команда</code> — Windows CMD\n"
+            "<code>.term ubuntu команда</code> — Ubuntu WSL\n"
+            "<code>.term debian команда</code> — Debian WSL\n"
+            "<code>.term status</code> — состояние WSL\n\n"
+            "⏱ Таймаут: 120 секунд.\n"
+            "📦 Вывод ограничен 12 000 символами."
+        ),
+        "usage": "❌ Использование: <code>.term win|ubuntu|debian команда</code>",
+        "running": "⏳ Выполняю...",
+        "empty": "❌ Команда пустая.",
+        "timeout": "⏱ Команда превысила таймаут <b>120 сек.</b>",
+        "error": "❌ Ошибка запуска: <code>{}</code>",
     }
 
-    @loader.owner
-    @loader.command()   # команда остаётся .t
-    async def t(self, message):
-        """Выполнить команду в терминале. .t <команда>"""
-        args = utils.get_args_raw(message)
-        if not args:
-            await utils.answer(message, self.strings("no_cmd"))
-            return
-        
-        status_msg = await utils.answer(message, self.strings("executing"))
-        
+    TIMEOUT = 120
+    MAX_OUTPUT = 12000
+
+    async def _run_shell(self, command):
         try:
-            start = asyncio.get_event_loop().time()
-            cmd_list = shlex.split(args)
-            proc = await asyncio.create_subprocess_exec(
-                *cmd_list,
+            process = await asyncio.create_subprocess_shell(
+                command,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.STDOUT,
             )
             try:
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+                output, _ = await asyncio.wait_for(
+                    process.communicate(), timeout=self.TIMEOUT
+                )
             except asyncio.TimeoutError:
-                proc.kill()
-                await status_msg.edit_text(self.strings("timeout"))
-                return
-            
-            elapsed = asyncio.get_event_loop().time() - start
-            output = stdout.decode('utf-8', errors='replace').strip()
-            error = stderr.decode('utf-8', errors='replace').strip()
-            
-            result = ""
-            if output:
-                result += output
-            if error:
-                if result:
-                    result += "\n\n[stderr]\n" + error
-                else:
-                    result = "[stderr]\n" + error
-            
-            if not result:
-                result = "(пустой вывод)"
-            
-            if len(result) > 3900:
-                result = result[:3900] + "\n... (обрезано)"
-            
-            result += f"\n\n⏱️ {self.strings('done').format(elapsed)}"
-            
-            await status_msg.edit_text(f"```bash\n{result}\n```", parse_mode="Markdown")
-            
-        except FileNotFoundError:
-            await status_msg.edit_text(self.strings("error").format("Команда не найдена"))
+                process.kill()
+                await process.communicate()
+                return None, "timeout"
+            return process.returncode, output.decode("utf-8", errors="replace")
         except Exception as e:
-            await status_msg.edit_text(self.strings("error").format(str(e)))
+            return None, str(e)
+
+    async def _run_wsl(self, distro, command):
+        wrapped = "wsl.exe -d {} -- bash -lc {}".format(
+            shlex.quote(distro), shlex.quote(command)
+        )
+        return await self._run_shell(wrapped)
+
+    def _format(self, target, command, code, output):
+        output = output or "(нет вывода)"
+        if len(output) > self.MAX_OUTPUT:
+            output = output[:self.MAX_OUTPUT] + "\n\n...[вывод обрезан]"
+        status = "OK" if code == 0 else "exit {}".format(code)
+        return (
+            "💻 <b>{}</b> <code>{}</code>\n"
+            "<code>{}</code>\n\n<pre>{}</pre>"
+        ).format(
+            html.escape(target),
+            html.escape(status),
+            html.escape(command),
+            html.escape(output),
+        )
+
+    @loader.owner
+    @loader.command()
+    async def term(self, message):
+        """win|ubuntu|debian|status — локальный терминал."""
+        args = utils.get_args_raw(message).strip()
+        if not args:
+            await utils.answer(message, self.strings("help"))
+            return
+
+        parts = args.split(maxsplit=1)
+        target = parts[0].lower()
+        command = parts[1].strip() if len(parts) > 1 else ""
+
+        if target in {"help", "h", "?"}:
+            await utils.answer(message, self.strings("help"))
+            return
+
+        if target == "status":
+            msg = await utils.answer(message, self.strings("running"))
+            code, output = await self._run_shell("wsl.exe -l -v")
+            if output == "timeout":
+                await utils.answer(msg, self.strings("timeout"))
+                return
+            if code is None:
+                await utils.answer(msg, self.strings("error").format(html.escape(output)))
+                return
+            await utils.answer(msg, self._format("WSL", "wsl.exe -l -v", code, output))
+            return
+
+        if target in {"win", "windows"}:
+            if not command:
+                await utils.answer(message, self.strings("empty"))
+                return
+            actual = "cmd.exe /d /s /c {}".format(shlex.quote(command))
+            display = "Windows"
+            msg = await utils.answer(message, self.strings("running"))
+            code, output = await self._run_shell(actual)
+        elif target in {"ubuntu", "debian"}:
+            if not command:
+                await utils.answer(message, self.strings("empty"))
+                return
+            display = target.capitalize() + " WSL"
+            msg = await utils.answer(message, self.strings("running"))
+            code, output = await self._run_wsl(target.capitalize(), command)
+        else:
+            await utils.answer(message, self.strings("usage"))
+            return
+
+        if output == "timeout":
+            await utils.answer(msg, self.strings("timeout"))
+            return
+        if code is None:
+            await utils.answer(msg, self.strings("error").format(html.escape(output)))
+            return
+        await utils.answer(msg, self._format(display, command, code, output))
