@@ -4,7 +4,7 @@ import subprocess
 import asyncio
 import shlex
 
-@loader.module(name="ShellExec")  # явно задаём уникальное имя
+@loader.module(name="ShellExec")
 class ShellExecMod(loader.Module):
     """Выполнение системных команд (только владелец)"""
     
@@ -18,7 +18,7 @@ class ShellExecMod(loader.Module):
     }
 
     @loader.owner
-    @loader.command()  # команда будет .exec
+    @loader.command()
     async def exec(self, message):
         """Выполнить команду. .exec <команда>"""
         args = utils.get_args_raw(message)
@@ -40,7 +40,7 @@ class ShellExecMod(loader.Module):
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
             except asyncio.TimeoutError:
                 proc.kill()
-                await status_msg.edit_text(self.strings("timeout"))
+                await status_msg.edit(self.strings("timeout"))  # edit вместо edit_text
                 return
             
             elapsed = asyncio.get_event_loop().time() - start
@@ -64,9 +64,9 @@ class ShellExecMod(loader.Module):
             
             result += f"\n\n⏱️ {self.strings('done').format(elapsed)}"
             
-            await status_msg.edit_text(f"```bash\n{result}\n```", parse_mode="Markdown")
+            await status_msg.edit(f"```bash\n{result}\n```", parse_mode="Markdown")
             
         except FileNotFoundError:
-            await status_msg.edit_text(self.strings("error").format("Команда не найдена"))
+            await status_msg.edit(self.strings("error").format("Команда не найдена"))
         except Exception as e:
-            await status_msg.edit_text(self.strings("error").format(str(e)))
+            await status_msg.edit(self.strings("error").format(str(e)))
