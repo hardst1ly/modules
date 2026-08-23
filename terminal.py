@@ -1,15 +1,15 @@
-# terminal.py
+# terminal.py – теперь называется MyTerminal
 from .. import loader, utils
 import subprocess
 import asyncio
 import shlex
 
-@loader.tds  # <-- заменили @loader.module на @loader.tds
-class TerminalMod(loader.Module):
+@loader.tds
+class MyTerminalMod(loader.Module):          # <-- имя класса изменено
     """Выполнение команд терминала (только для владельца)"""
     
     strings = {
-        "name": "TerminalMod",
+        "name": "terminaI",                # <-- новое имя модуля
         "no_cmd": "❌ Укажите команду. Пример: .t ls -la",
         "executing": "⏳ Выполняю...",
         "done": "✅ Выполнено за {:.2f} сек",
@@ -19,7 +19,7 @@ class TerminalMod(loader.Module):
     }
 
     @loader.owner
-    @loader.command()  # <-- добавили круглые скобки
+    @loader.command()   # команда остаётся .t
     async def t(self, message):
         """Выполнить команду в терминале. .t <команда>"""
         args = utils.get_args_raw(message)
