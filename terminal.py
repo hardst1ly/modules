@@ -8,12 +8,12 @@ from .. import loader, utils
 
 
 @loader.tds
-class WSLTerminalMod(loader.Module):
+class ShellUbuntuMod(loader.Module):
     """Owner-only local terminal. Ubuntu WSL is the default target."""
 
     strings = {
-        "name": "WSLTerminal",
-        "help": "<b>WSL Terminal</b>\n\n<code>.t команда</code> — Ubuntu WSL\n<code>.t debian команда</code> — Debian WSL\n<code>.t win команда</code> — Windows CMD\n<code>.t status</code> — состояние WSL",
+        "name": "shellUbuntu",
+        "help": "<b>shellUbuntu</b>\n\n<code>.t команда</code> — Ubuntu WSL\n<code>.t debian команда</code> — Debian WSL\n<code>.t win команда</code> — Windows CMD\n<code>.t status</code> — состояние WSL",
         "usage": "❌ Использование: <code>.t [ubuntu|debian|win] команда</code>",
         "running": "⏳ Выполняю...",
         "empty": "❌ Команда пустая.",
